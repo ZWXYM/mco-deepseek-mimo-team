@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+work/
+tasks/
+artifacts/
+*.log
+*.db
+*.sqlite*
+*.dpapi
+.env*

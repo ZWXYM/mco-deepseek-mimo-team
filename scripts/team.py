@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -17,9 +18,8 @@ import psutil
 
 
 HOME = Path.home()
-DB = HOME / ".cc-switch" / "cc-switch.db"
-CLAUDE_SETTINGS = HOME / ".claude" / "settings.json"
-MCO_ENTRY = HOME / "AppData" / "Roaming" / "npm" / "node_modules" / "@tt-a1i" / "mco" / "mco"
+DB = Path(os.environ.get("CC_SWITCH_DB", HOME / ".cc-switch" / "cc-switch.db")).expanduser()
+CLAUDE_SETTINGS = Path(os.environ.get("CLAUDE_SETTINGS", HOME / ".claude" / "settings.json")).expanduser()
 SUPPORTED_PROVIDERS = {"DeepSeek", "Xiaomi MiMo"}
 MODEL_KEYS = (
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -33,8 +33,43 @@ def emit(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
 
 
+def mco_command() -> list[str]:
+    """Find the installed MCO CLI without assuming one OS or npm prefix."""
+    explicit = os.environ.get("MCO_ENTRY")
+    if explicit:
+        entry = Path(explicit).expanduser().resolve()
+        if not entry.is_file():
+            raise FileNotFoundError(f"MCO_ENTRY does not exist: {entry}")
+        return [sys.executable, str(entry)]
+
+    binary = shutil.which("mco")
+    roots = []
+    if binary:
+        roots.append(Path(binary).resolve().parent / "node_modules")
+        roots.append(Path(binary).parent / "node_modules")
+    if os.environ.get("APPDATA"):
+        roots.append(Path(os.environ["APPDATA"]) / "npm" / "node_modules")
+    npm = shutil.which("npm")
+    if npm:
+        try:
+            result = subprocess.run([npm, "root", "-g"], capture_output=True, text=True, timeout=5, check=True)
+            roots.append(Path(result.stdout.strip()))
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+    roots.append(HOME / ".local" / "share" / "mco" / "node_modules")
+    for root in roots:
+        entry = root / "@tt-a1i" / "mco" / "mco"
+        if entry.is_file():
+            return [sys.executable, str(entry.resolve())]
+    if binary and os.name != "nt":
+        return [binary]
+    raise FileNotFoundError("MCO CLI not found; install @tt-a1i/mco or set MCO_ENTRY to its Python entrypoint")
+
+
 def active_route() -> dict:
-    with sqlite3.connect(DB) as conn:
+    if not DB.is_file():
+        raise FileNotFoundError(f"CC Switch database not found: {DB}")
+    with sqlite3.connect(DB.resolve().as_uri() + "?mode=ro", uri=True) as conn:
         rows = conn.execute(
             "SELECT name, settings_config FROM providers WHERE app_type='claude' AND is_current=1"
         ).fetchall()
@@ -160,8 +195,7 @@ def start_task(args: argparse.Namespace) -> dict:
     prompt = Path(args.prompt_file).resolve()
     if not repo.is_dir() or not prompt.is_file():
         raise FileNotFoundError("Repository or prompt file does not exist")
-    if not MCO_ENTRY.is_file():
-        raise FileNotFoundError("MCO Python entrypoint not found")
+    command = mco_command()
     for meta_file in (base / "tasks").glob("*/meta.json"):
         other = read_meta(meta_file.parent)
         if process_running(other) and other.get("provider") != route["provider"]:
@@ -170,8 +204,7 @@ def start_task(args: argparse.Namespace) -> dict:
     directory = task_dir(base, task_id)
     directory.mkdir(parents=True, exist_ok=False)
     artifact_base = base / "artifacts"
-    command = [
-        sys.executable, str(MCO_ENTRY),
+    command += [
         "review" if args.mode == "read_only" else "run",
         "--repo", str(repo), "--file", str(prompt),
         "--agent", f"{args.alias}=claude:{selected['alias']}",
@@ -181,11 +214,14 @@ def start_task(args: argparse.Namespace) -> dict:
     ]
     if args.mode == "write":
         command += ["--execution-mode", "write"]
-    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
+    process_options = (
+        {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt" else {"start_new_session": True}
+    )
     with (directory / "events.jsonl").open("w", encoding="utf-8") as stdout, (directory / "diagnostics.log").open("w", encoding="utf-8") as stderr:
         process = subprocess.Popen(
             command, cwd=repo, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
-            creationflags=flags,
+            **process_options,
         )
     pid_created = psutil.Process(process.pid).create_time()
     meta = {

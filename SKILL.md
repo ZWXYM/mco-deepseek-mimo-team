@@ -1,16 +1,16 @@
 ---
-name: mco-deepseek-team
-description: Lead local Claude Code workers through MCO and CC Switch with either DeepSeek or Xiaomi MiMo, including dispatch, live status, independent review, and repair handoffs.
+name: mco-deepseek-mimo-team
+description: Lead local Claude Code workers through MCO and CC Switch with an active DeepSeek or Xiaomi MiMo route on Windows, macOS, or Linux.
 ---
 
-# Codex-led MCO workers on Windows
+# Codex-led MCO workers
 
 Use this skill when the user asks Codex to delegate work to the local DeepSeek or Xiaomi MiMo route. Codex owns the task, acceptance criteria, stage gates, and final verification. Workers can plan, implement, test, review, and repair. Keep routine worker analysis in their artifacts; bring only compact results and decisive evidence into Codex's context. If the `mco-cli` skill is installed, read it for native MCO modes beyond this helper.
 
 ## Routing and concurrency
 
 - Only **one provider** may work at a time: DeepSeek or Xiaomi MiMo. Multiple workers and model variants of that selected provider may run concurrently. Never switch CC Switch while a worker is active. Use one persistent `--work-dir` for all workers so the helper can detect active tasks from the other provider.
-- Run `python <skill-dir>\scripts\team.py routes` before dispatch. It reads the active CC Switch Claude provider and live Claude model aliases, reporting model names only. Do not print or copy credentials. Pass the selected name as `--expected-provider` to `start`; the command rejects provider drift.
+- Run `team.py routes` with the Python interpreter that has `psutil` installed before dispatch. It reads the active CC Switch Claude provider and live Claude model aliases, reporting model names only. MiMo is optional: a DeepSeek-only installation works when DeepSeek is active. Do not print or copy credentials. Pass the selected name as `--expected-provider` to `start`; the command rejects provider drift.
 - Prefer a configured `[1M]` variant when the same model name has both ordinary and `[1M]` choices. The helper sorts `[1M]` first within a role. Choose Pro, Flash, or Ultraspeed by the job rather than fixed roles. The model string and a successful short call do not prove usable context capacity; verify long-context behavior separately when it matters.
 - Mappings can change. Re-read `routes` each session. Validate each configured route with a small task before relying on it for substantive work.
 
@@ -25,7 +25,7 @@ Use this skill when the user asks Codex to delegate work to the local DeepSeek o
 ## Local MiMo Pro behavior and failure handling
 
 - On MCO 0.11.0, a MiMo Pro `[1M]` review timed out at the default 180-second hard deadline although raw output appeared just after it. The same style of task completed successfully with a 420-second deadline; use an explicit larger `--timeout` for substantive Pro work (the helper defaults to 600 seconds). Tune to task size, inspect status, and do not extend indefinitely without evidence.
-- The tested Windows MCO 0.11.0 installation needed compatibility fixes: native `claude.exe` launch, explicit `--model` forwarding, `os.getuid` fallback, and process-tree cancellation with `taskkill`. npm updates may overwrite local patches. If startup, model selection, or cancellation fails, inspect the installed MCO adapter before retrying; see [references/operations.md](references/operations.md).
+- The tested Windows MCO 0.11.0 installation needed compatibility fixes: native `claude.exe` launch, explicit `--model` forwarding, `os.getuid` fallback, and process-tree cancellation with `taskkill`. The Windows patch script is not needed on macOS or Linux. npm updates may overwrite local patches. If startup, model selection, or cancellation fails, inspect the installed MCO adapter before retrying; see [references/operations.md](references/operations.md).
 - If the route rejects Claude Code's advisor tool with `advisor_20260301` or HTTP 422, try `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1` for a test process. Do not set it globally without evidence.
 - In local MCO 0.11.0 testing, `--chain --synthesize` together produced chain artifacts but no synthesis artifact. When both are needed, run them as separate stages and check saved stage files.
 

@@ -81,6 +81,9 @@ def main() -> None:
     parser.add_argument("--mco-root", type=Path, default=Path(os.environ.get("APPDATA", "")) / "npm" / "node_modules" / "@tt-a1i" / "mco")
     parser.add_argument("--apply", action="store_true", help="Back up and modify the installed MCO package")
     args = parser.parse_args()
+    if os.name != "nt":
+        print("Windows MCO adapter patches are not needed on this platform")
+        return
     root = args.mco_root.resolve()
     if not root.is_dir():
         raise SystemExit(f"MCO package not found: {root}")
